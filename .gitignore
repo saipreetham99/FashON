@@ -1,0 +1,40 @@
+.DS_Store
+*.swp
+*.log
+
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/google-services.json
+android/key.properties
+*.jks
+*.keystore
+
+# iOS / macOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+macos/Pods/
+**/xcuserdata/
+
+# Never commit a key
+*.env
+secrets.dart
