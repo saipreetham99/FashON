@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../data/image_store.dart';
 import '../models/clothing_item.dart';
 import '../models/pair_score.dart';
+import '../models/user_profile.dart';
 import 'api_key_service.dart';
 
 /// A Gemini failure worth showing the user.
@@ -175,7 +176,16 @@ Return one JSON object and nothing else. No markdown, no fences, no preamble.
   }
 
   /// Scores one pairing. The only place a pair is sent to the model.
-  Future<PairScore> scorePair(ClothingItem a, ClothingItem b) async {
+  ///
+  /// [profile] contributes only its styling fields, and only as scoring
+  /// criteria: the prompt still forbids any remark about the wearer. When the
+  /// profile has no styling context the request is byte-identical to the
+  /// profile-free version, which is what keeps an existing cache valid.
+  Future<PairScore> scorePair(
+    ClothingItem a,
+    ClothingItem b, {
+    UserProfile profile = UserProfile.empty,
+  }) async {
     final key = _requireKey();
 
     final encodedA = await _encoded(a.fileName);
@@ -189,7 +199,7 @@ Return one JSON object and nothing else. No markdown, no fences, no preamble.
         'contents': [
           {
             'parts': [
-              {'text': _scoringPrompt},
+              {'text': _promptFor(profile)},
               {'text': 'Garment 1 (${a.category.label}):'},
               {
                 'inline_data': {'mime_type': 'image/jpeg', 'data': encodedA},
@@ -214,20 +224,45 @@ Return one JSON object and nothing else. No markdown, no fences, no preamble.
       itemIdB: b.id,
       model: scoringModel,
       promptVersion: promptVersion,
+      profileFingerprint: profile.fingerprint,
     );
+  }
+
+  /// The rubric, with a wearer block appended when there is one.
+  static String _promptFor(UserProfile profile) {
+    final context = profile.stylingContext;
+    if (context == null) return _scoringPrompt;
+
+    return '''$_scoringPrompt
+
+WEARER CONTEXT — apply as scoring criteria only.
+$context
+
+Weigh colour against the stated undertone, and proportion and silhouette against
+the stated frame and build. Let the stated occasions inform style cohesion.
+Never describe, rate, or refer to the wearer's body, face, or appearance in any
+output field; the advice must read as being about the clothes.''';
   }
 
   /// Renders the given garments worn together as one outfit.
   ///
-  /// Returns image bytes; the caller decides whether to keep them.
+  /// Uses the profile photo as a likeness reference when
+  /// [UserProfile.mayUsePhotoAsLikeness] allows it, and the physique fields
+  /// regardless. Returns image bytes; the caller decides whether to keep them.
   Future<Uint8List> generateOutfitPreview({
     required List<ClothingItem> items,
+    UserProfile profile = UserProfile.empty,
     String? note,
   }) async {
     final key = _requireKey();
     if (items.isEmpty) {
       throw const GeminiException('Pick at least one garment to preview.');
     }
+
+    // Render-only fields are all fair game here: previews are never cached, so
+    // physique and presentation can change as often as the user likes.
+    final physique = profile.renderNote;
+    final useLikeness = profile.mayUsePhotoAsLikeness;
 
     final parts = <Map<String, dynamic>>[
       {
@@ -237,9 +272,23 @@ Return one JSON object and nothing else. No markdown, no fences, no preamble.
             'together as one outfit. Every reference garment must appear, and '
             'must keep its own colour, pattern, and cut. Seamless neutral '
             'background, soft even lighting, relaxed natural pose, sharp focus.'
+            '${physique == null ? '' : ' $physique'}'
+            '${useLikeness ? ' Use the portrait reference for the model\'s face and build.' : ''}'
             '${note == null || note.isEmpty ? '' : ' $note'}',
       },
     ];
+
+    if (useLikeness) {
+      parts.add({'text': 'Portrait reference (the wearer):'});
+      parts.add({
+        'inline_data': {
+          'mime_type': 'image/jpeg',
+          'data': base64Encode(
+            await _images.readProfileBytes(profile.photoFileName!),
+          ),
+        },
+      });
+    }
 
     for (final item in items) {
       parts.add({'text': 'Reference (${item.category.label}):'});

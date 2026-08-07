@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../data/score_repository.dart';
 import '../models/clothing_item.dart';
 import '../models/pair_score.dart';
+import '../models/user_profile.dart';
 import 'gemini_service.dart';
 
 /// The single door between the app and paid scoring.
@@ -20,6 +21,14 @@ class PairScoringService {
   final GeminiService _gemini;
   final ScoreRepository _scores;
 
+  /// Reads the profile at call time rather than holding a copy.
+  ///
+  /// A snapshot taken at construction would go stale the moment the user edits
+  /// their profile, and the consequence is nasty: scores computed against the
+  /// new context but written under the old fingerprint, so every read misses and
+  /// the app re-spends forever.
+  final UserProfile Function() _currentProfile;
+
   /// In-flight work keyed by pair, so two widgets asking at the same moment
   /// share one network call instead of racing and paying twice.
   final Map<String, Future<PairScore>> _inFlight = {};
@@ -27,8 +36,10 @@ class PairScoringService {
   PairScoringService({
     required GeminiService gemini,
     required ScoreRepository scores,
+    required UserProfile Function() currentProfile,
   }) : _gemini = gemini,
-       _scores = scores;
+       _scores = scores,
+       _currentProfile = currentProfile;
 
   /// A verdict for the pair, from cache when available.
   Future<PairScore> score(ClothingItem a, ClothingItem b) {
@@ -43,14 +54,17 @@ class PairScoringService {
   }
 
   Future<PairScore> _scoreUncached(ClothingItem a, ClothingItem b) async {
+    final profile = _currentProfile();
+
     final cached = await _scores.get(
       a.id,
       b.id,
       promptVersion: GeminiService.promptVersion,
+      profileFingerprint: profile.fingerprint,
     );
     if (cached != null) return cached;
 
-    final fresh = await _gemini.scorePair(a, b);
+    final fresh = await _gemini.scorePair(a, b, profile: profile);
 
     // A failed cache write must not fail the score the user is waiting on.
     try {
@@ -64,8 +78,12 @@ class PairScoringService {
 
   /// Cache-only read. Never calls the model, so callers can render a
   /// placeholder rather than silently spending.
-  Future<PairScore?> cached(String itemIdA, String itemIdB) =>
-      _scores.get(itemIdA, itemIdB, promptVersion: GeminiService.promptVersion);
+  Future<PairScore?> cached(String itemIdA, String itemIdB) => _scores.get(
+    itemIdA,
+    itemIdB,
+    promptVersion: GeminiService.promptVersion,
+    profileFingerprint: _currentProfile().fingerprint,
+  );
 
   /// Scores each candidate against all of [chosen] and ranks by mean score.
   ///
@@ -118,7 +136,7 @@ class PairScoringService {
         } on GeminiException catch (e) {
           // An auth failure will hit every candidate, so stop immediately
           // rather than grinding through the queue failing identically.
-          if (e.isAuthFailure) throw e;
+          if (e.isAuthFailure) rethrow;
           firstError ??= e;
           debugPrint('PairScoring: ${candidate.id} failed: ${e.message}');
         } finally {

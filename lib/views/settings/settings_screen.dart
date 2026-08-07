@@ -9,6 +9,8 @@ import '../../services/gemini_service.dart';
 import '../../theme/app_theme.dart';
 import '../../viewmodels/closet_viewmodel.dart';
 import '../../viewmodels/combinations_viewmodel.dart';
+import '../../viewmodels/profile_viewmodel.dart';
+import '../profile/profile_screen.dart';
 import '../widgets/common.dart';
 
 /// Where the user installs their own Gemini key, and clears the score cache.
@@ -97,6 +99,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(Gap.xl, 0, Gap.xl, Gap.huge),
         children: [
+          _profileRow(),
+          const SizedBox(height: Gap.huge),
+          const Divider(),
+          const SizedBox(height: Gap.xl),
           const SectionLabel('Gemini API key'),
           const SizedBox(height: Gap.md),
           const Text(
@@ -268,6 +274,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: Gap.sm),
           _modelRow('Rubric version', '${GeminiService.promptVersion}'),
         ],
+      ),
+    );
+  }
+
+  Widget _profileRow() {
+    final profile = context.watch<ProfileViewModel>().profile;
+
+    final summary = <String>[
+      if (profile.undertone != null) profile.undertone!.label.toLowerCase(),
+      if (profile.heightBand != null) profile.heightBand!.label.toLowerCase(),
+      if (profile.build != null) profile.build!.label.toLowerCase(),
+    ].join(', ');
+
+    return GestureDetector(
+      onTap:
+          () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
+      child: Panel(
+        child: Row(
+          children: [
+            Icon(
+              profile.hasPhoto ? Icons.person : Icons.person_outline,
+              size: 20,
+              color: profile.isEmpty ? Bone.muted : Accent.brass,
+            ),
+            const SizedBox(width: Gap.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    profile.displayName?.isNotEmpty == true
+                        ? profile.displayName!
+                        : 'Profile',
+                    style: Type.body,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    profile.isEmpty
+                        ? 'Tell FashON who it is styling'
+                        : summary.isEmpty
+                        ? 'Previews only — no styling context set'
+                        : summary,
+                    style: Type.small,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Bone.faint, size: 20),
+          ],
+        ),
       ),
     );
   }

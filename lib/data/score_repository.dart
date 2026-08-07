@@ -13,6 +13,11 @@ import 'database.dart';
 /// * Swapping one garment in a selection only requires scoring the pairs that
 ///   actually changed. Everything else is a hit, including pairs scored in a
 ///   completely different part of the app weeks earlier.
+///
+/// The key is `(pair, promptVersion, profileFingerprint)`. A verdict is only
+/// valid for the rubric *and* the wearer it was judged under. A profile with no
+/// styling fields fingerprints as `none`, which is exactly what pre-profile rows
+/// carry, so adding a name or a photo never costs a rescore.
 class ScoreRepository {
   final AppDatabase _database;
 
@@ -26,12 +31,13 @@ class ScoreRepository {
     String itemA,
     String itemB, {
     required int promptVersion,
+    required String profileFingerprint,
   }) async {
     final db = await _database.db;
     final rows = await db.query(
       'pair_scores',
-      where: 'pair_key = ? AND prompt_version = ?',
-      whereArgs: [pairKeyFor(itemA, itemB), promptVersion],
+      where: 'pair_key = ? AND prompt_version = ? AND profile_fp = ?',
+      whereArgs: [pairKeyFor(itemA, itemB), promptVersion, profileFingerprint],
       limit: 1,
     );
     if (rows.isEmpty) return null;
@@ -48,12 +54,15 @@ class ScoreRepository {
   }
 
   /// Every cached pairing, best first. Backs the combinations grid.
-  Future<List<PairScore>> allRanked({required int promptVersion}) async {
+  Future<List<PairScore>> allRanked({
+    required int promptVersion,
+    required String profileFingerprint,
+  }) async {
     final db = await _database.db;
     final rows = await db.query(
       'pair_scores',
-      where: 'prompt_version = ? AND valid = 1',
-      whereArgs: [promptVersion],
+      where: 'prompt_version = ? AND profile_fp = ? AND valid = 1',
+      whereArgs: [promptVersion, profileFingerprint],
       orderBy: 'score DESC',
     );
     return rows.map(PairScore.fromRow).toList(growable: false);
@@ -65,12 +74,15 @@ class ScoreRepository {
   Future<List<PairScore>> forItem(
     String itemId, {
     required int promptVersion,
+    required String profileFingerprint,
   }) async {
     final db = await _database.db;
     final rows = await db.query(
       'pair_scores',
-      where: '(item_a = ? OR item_b = ?) AND prompt_version = ? AND valid = 1',
-      whereArgs: [itemId, itemId, promptVersion],
+      where:
+          '(item_a = ? OR item_b = ?) AND prompt_version = ? '
+          'AND profile_fp = ? AND valid = 1',
+      whereArgs: [itemId, itemId, promptVersion, profileFingerprint],
       orderBy: 'score DESC',
     );
     return rows.map(PairScore.fromRow).toList(growable: false);
@@ -84,6 +96,7 @@ class ScoreRepository {
     String itemId,
     List<String> candidateIds, {
     required int promptVersion,
+    required String profileFingerprint,
   }) async {
     if (candidateIds.isEmpty) return const [];
 
@@ -94,6 +107,7 @@ class ScoreRepository {
       '''
       SELECT * FROM pair_scores
       WHERE prompt_version = ?
+        AND profile_fp = ?
         AND valid = 1
         AND (
           (item_a = ? AND item_b IN ($placeholders))
@@ -102,7 +116,14 @@ class ScoreRepository {
         )
       ORDER BY score DESC
       ''',
-      [promptVersion, itemId, ...candidateIds, itemId, ...candidateIds],
+      [
+        promptVersion,
+        profileFingerprint,
+        itemId,
+        ...candidateIds,
+        itemId,
+        ...candidateIds,
+      ],
     );
 
     return rows.map(PairScore.fromRow).toList(growable: false);
@@ -113,13 +134,16 @@ class ScoreRepository {
   /// Keys only, deliberately: the backfill needs to know what is *missing*, and
   /// loading full verdicts with their advice text to answer a set-membership
   /// question would read megabytes to compute a difference.
-  Future<Set<String>> cachedPairKeys({required int promptVersion}) async {
+  Future<Set<String>> cachedPairKeys({
+    required int promptVersion,
+    required String profileFingerprint,
+  }) async {
     final db = await _database.db;
     final rows = await db.query(
       'pair_scores',
       columns: ['pair_key'],
-      where: 'prompt_version = ?',
-      whereArgs: [promptVersion],
+      where: 'prompt_version = ? AND profile_fp = ?',
+      whereArgs: [promptVersion, profileFingerprint],
     );
     return rows.map((row) => row['pair_key'] as String).toSet();
   }

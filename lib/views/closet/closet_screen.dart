@@ -5,6 +5,7 @@ import '../../data/image_store.dart';
 import '../../models/clothing_item.dart';
 import '../../theme/app_theme.dart';
 import '../../viewmodels/closet_viewmodel.dart';
+import '../profile/profile_screen.dart';
 import '../settings/settings_screen.dart';
 import '../widgets/common.dart';
 import '../widgets/garment_tile.dart';
@@ -26,6 +27,14 @@ class ClosetScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Closet'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: 'Profile',
+            onPressed:
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                ),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',

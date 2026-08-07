@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 
 import '../data/look_repository.dart';
@@ -7,6 +5,7 @@ import '../data/score_repository.dart';
 import '../models/clothing_item.dart';
 import '../models/outfit.dart';
 import '../models/pair_score.dart';
+import '../models/user_profile.dart';
 import '../services/gemini_service.dart';
 import '../services/pair_scoring_service.dart';
 import 'closet_viewmodel.dart';
@@ -66,6 +65,7 @@ class MatchViewModel extends ChangeNotifier {
   final ScoreRepository _scores;
   final LookRepository _looks;
   final GeminiService _gemini;
+  final UserProfile Function() _currentProfile;
 
   MatchViewModel({
     required ClosetViewModel closet,
@@ -73,18 +73,21 @@ class MatchViewModel extends ChangeNotifier {
     required ScoreRepository scores,
     required LookRepository looks,
     required GeminiService gemini,
+    required UserProfile Function() currentProfile,
   }) : _closet = closet,
        _scoring = scoring,
        _scores = scores,
        _looks = looks,
-       _gemini = gemini;
+       _gemini = gemini,
+       _currentProfile = currentProfile;
 
   // --- Selection ------------------------------------------------------------
 
   /// At most one garment per category: an outfit does not have two pairs of
   /// trousers, and allowing it would make the averaged score meaningless.
   final Map<GarmentCategory, ClothingItem> _selected = {};
-  Map<GarmentCategory, ClothingItem> get selected => Map.unmodifiable(_selected);
+  Map<GarmentCategory, ClothingItem> get selected =>
+      Map.unmodifiable(_selected);
 
   List<ClothingItem> get selectedItems =>
       _selected.values.toList(growable: false);
@@ -306,6 +309,7 @@ class MatchViewModel extends ChangeNotifier {
           anchor.id,
           alternatives,
           promptVersion: GeminiService.promptVersion,
+          profileFingerprint: _currentProfile().fingerprint,
         );
         if (_disposed || run != _run) return;
 
@@ -458,7 +462,10 @@ class MatchViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final bytes = await _gemini.generateOutfitPreview(items: selectedItems);
+      final bytes = await _gemini.generateOutfitPreview(
+        items: selectedItems,
+        profile: _currentProfile(),
+      );
       if (_disposed || run != _run) return;
       _preview = bytes;
       _status = MatchStatus.rendered;

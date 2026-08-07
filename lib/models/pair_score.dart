@@ -45,6 +45,13 @@ class PairScore {
   /// silently mixing two scoring standards in one grid.
   final int promptVersion;
 
+  /// Identity of the wearer context this was judged under.
+  ///
+  /// `none` when no styling fields were set. Part of the cache key: a verdict
+  /// produced for a different wearer is not comparable, so it is a miss rather
+  /// than a stale-but-usable hit.
+  final String profileFingerprint;
+
   final DateTime scoredAt;
 
   const PairScore({
@@ -60,6 +67,7 @@ class PairScore {
     required this.valid,
     required this.model,
     required this.promptVersion,
+    required this.profileFingerprint,
     required this.scoredAt,
   });
 
@@ -70,6 +78,7 @@ class PairScore {
     required String itemIdB,
     required String model,
     required int promptVersion,
+    required String profileFingerprint,
   }) {
     List<String> list(String field) {
       final raw = json[field];
@@ -101,6 +110,7 @@ class PairScore {
       valid: json['valid'] as bool? ?? true,
       model: model,
       promptVersion: promptVersion,
+      profileFingerprint: profileFingerprint,
       scoredAt: DateTime.now(),
     );
   }
@@ -131,6 +141,7 @@ class PairScore {
       valid: (row['valid'] as int) == 1,
       model: row['model'] as String? ?? '',
       promptVersion: (row['prompt_version'] as int?) ?? 0,
+      profileFingerprint: row['profile_fp'] as String? ?? 'none',
       scoredAt: DateTime.fromMillisecondsSinceEpoch(row['scored_at'] as int),
     );
   }
@@ -148,6 +159,7 @@ class PairScore {
     'valid': valid ? 1 : 0,
     'model': model,
     'prompt_version': promptVersion,
+    'profile_fp': profileFingerprint,
     'scored_at': scoredAt.millisecondsSinceEpoch,
   };
 

@@ -12,7 +12,9 @@ class AppDatabase {
   static const _fileName = 'fashon.db';
 
   /// v1 → v2 added the `settings` table for the background-scoring preference.
-  static const _version = 2;
+  /// v2 → v3 added the `profile` table and stamped cached scores with the
+  /// profile fingerprint they were judged under.
+  static const _version = 3;
 
   Database? _db;
 
@@ -33,6 +35,17 @@ class AppDatabase {
         // database. Never drop and recreate: the score cache is expensive to
         // rebuild, so losing it would cost the user real money.
         if (from < 2) await _createSettings(db);
+        if (from < 3) {
+          await _createProfile(db);
+          // Existing rows were scored with no wearer context, which is exactly
+          // what 'none' means, so the whole cache stays valid for a user who
+          // has not filled in a profile. Only setting a styling field costs a
+          // rescore.
+          await db.execute(
+            "ALTER TABLE pair_scores "
+            "ADD COLUMN profile_fp TEXT NOT NULL DEFAULT 'none'",
+          );
+        }
       },
       onCreate: (db, version) async {
         await db.execute('''
@@ -60,6 +73,7 @@ class AppDatabase {
             valid          INTEGER NOT NULL,
             model          TEXT    NOT NULL,
             prompt_version INTEGER NOT NULL,
+            profile_fp     TEXT    NOT NULL DEFAULT 'none',
             scored_at      INTEGER NOT NULL,
             FOREIGN KEY (item_a) REFERENCES items(id) ON DELETE CASCADE,
             FOREIGN KEY (item_b) REFERENCES items(id) ON DELETE CASCADE
@@ -84,8 +98,31 @@ class AppDatabase {
         await db.execute('CREATE INDEX idx_looks_tag ON looks(tag)');
 
         await _createSettings(db);
+        await _createProfile(db);
       },
     );
+  }
+
+  /// The wearer's profile. Exactly one row, keyed `me`.
+  ///
+  /// A table rather than key-value rows so the fields stay typed and a future
+  /// migration can add columns without parsing strings.
+  static Future<void> _createProfile(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS profile (
+        id           TEXT PRIMARY KEY,
+        undertone    TEXT,
+        height_band  TEXT,
+        build_type   TEXT,
+        occasions    TEXT,
+        display_name TEXT,
+        age          INTEGER,
+        height_cm    INTEGER,
+        weight_kg    INTEGER,
+        presentation TEXT,
+        photo_file   TEXT
+      )
+    ''');
   }
 
   /// Small key-value store for user preferences.

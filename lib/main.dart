@@ -7,6 +7,7 @@ import 'data/database.dart';
 import 'data/image_store.dart';
 import 'data/item_repository.dart';
 import 'data/look_repository.dart';
+import 'data/profile_repository.dart';
 import 'data/score_repository.dart';
 import 'services/api_key_service.dart';
 import 'services/backfill_service.dart';
@@ -17,6 +18,7 @@ import 'viewmodels/closet_viewmodel.dart';
 import 'viewmodels/combinations_viewmodel.dart';
 import 'viewmodels/looks_viewmodel.dart';
 import 'viewmodels/match_viewmodel.dart';
+import 'viewmodels/profile_viewmodel.dart';
 import 'views/root_screen.dart';
 
 Future<void> main() async {
@@ -90,17 +92,31 @@ class FashonApp extends StatelessWidget {
         Provider<LookRepository>(
           create: (_) => LookRepository(database: database, images: images),
         ),
+        Provider<ProfileRepository>(
+          create: (_) => ProfileRepository(database: database, images: images),
+        ),
 
         // --- Services ---
         Provider<GeminiService>(
           create: (_) => GeminiService(apiKeys: apiKeys, images: images),
           dispose: (_, service) => service.dispose(),
         ),
+        // Before the scoring services: they read the fingerprint from it on
+        // every call, so it has to be constructible first.
+        ChangeNotifierProvider<ProfileViewModel>(
+          lazy: false,
+          create:
+              (ctx) =>
+                  ProfileViewModel(profiles: ctx.read<ProfileRepository>())
+                    ..load(),
+        ),
+
         Provider<PairScoringService>(
           create:
               (ctx) => PairScoringService(
                 gemini: ctx.read<GeminiService>(),
                 scores: ctx.read<ScoreRepository>(),
+                currentProfile: () => ctx.read<ProfileViewModel>().profile,
               ),
         ),
 
@@ -118,6 +134,7 @@ class FashonApp extends StatelessWidget {
               (ctx) => CombinationsViewModel(
                 scores: ctx.read<ScoreRepository>(),
                 closet: ctx.read<ClosetViewModel>(),
+                currentProfile: () => ctx.read<ProfileViewModel>().profile,
               ),
         ),
         ChangeNotifierProvider<MatchViewModel>(
@@ -128,6 +145,7 @@ class FashonApp extends StatelessWidget {
                 scores: ctx.read<ScoreRepository>(),
                 looks: ctx.read<LookRepository>(),
                 gemini: ctx.read<GeminiService>(),
+                currentProfile: () => ctx.read<ProfileViewModel>().profile,
               ),
         ),
 
@@ -144,6 +162,7 @@ class FashonApp extends StatelessWidget {
               scores: ctx.read<ScoreRepository>(),
               apiKeys: apiKeys,
               settings: settings,
+              currentProfile: () => ctx.read<ProfileViewModel>().profile,
             );
             closet.onClosetChanged = backfill.onClosetChanged;
 

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -22,11 +21,15 @@ class ImageStore {
 
   Directory? _items;
   Directory? _previews;
+  Directory? _profile;
 
   Future<Directory> get itemsDir async => _items ??= await _ensure('garments');
 
   Future<Directory> get previewsDir async =>
       _previews ??= await _ensure('previews');
+
+  Future<Directory> get profileDir async =>
+      _profile ??= await _ensure('profile');
 
   /// Resolves both directories up front, at startup.
   ///
@@ -36,6 +39,7 @@ class ImageStore {
   Future<void> warmUp() async {
     await itemsDir;
     await previewsDir;
+    await profileDir;
   }
 
   /// Path for a garment photo, valid only after [warmUp].
@@ -55,6 +59,15 @@ class ImageStore {
     final dir = _previews;
     if (dir == null) {
       throw StateError('ImageStore.warmUp() must run before previewPathSync.');
+    }
+    return p.join(dir.path, fileName);
+  }
+
+  /// Path for the profile photo, valid only after [warmUp].
+  String profilePathSync(String fileName) {
+    final dir = _profile;
+    if (dir == null) {
+      throw StateError('ImageStore.warmUp() must run before profilePathSync.');
     }
     return p.join(dir.path, fileName);
   }
@@ -108,6 +121,49 @@ class ImageStore {
     final target = await previewFile(fileName);
     await target.writeAsBytes(bytes, flush: true);
     return fileName;
+  }
+
+  /// Downscales and stores the profile photo.
+  ///
+  /// The file name carries a timestamp so replacing a photo never collides with
+  /// a cached decode of the previous one — reusing a fixed name leaves Flutter's
+  /// image cache serving the old portrait until the app restarts.
+  Future<String> saveProfilePhoto(File source) async {
+    final raw = await source.readAsBytes();
+    final shrunk = await compute(_downscaleJpeg, raw);
+
+    final fileName = 'me_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final target = File(p.join((await profileDir).path, fileName));
+    await target.writeAsBytes(shrunk, flush: true);
+
+    // Only one portrait is ever current, so clear the rest rather than
+    // accumulating every photo the user has tried.
+    final dir = await profileDir;
+    for (final entity in dir.listSync()) {
+      if (entity is File && p.basename(entity.path) != fileName) {
+        try {
+          entity.deleteSync();
+        } on FileSystemException {
+          // A stale portrait is harmless; nothing references it.
+        }
+      }
+    }
+
+    return fileName;
+  }
+
+  Future<Uint8List> readProfileBytes(String fileName) async {
+    final file = File(p.join((await profileDir).path, fileName));
+    return file.readAsBytes();
+  }
+
+  Future<void> deleteProfilePhoto(String fileName) async {
+    try {
+      final file = File(p.join((await profileDir).path, fileName));
+      if (await file.exists()) await file.delete();
+    } on FileSystemException catch (e) {
+      debugPrint('ImageStore: could not delete portrait $fileName: $e');
+    }
   }
 
   /// Reads a garment photo back, for sending to the model.

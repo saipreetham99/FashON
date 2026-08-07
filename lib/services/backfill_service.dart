@@ -6,6 +6,7 @@ import '../data/app_settings.dart';
 import '../data/score_repository.dart';
 import '../models/clothing_item.dart';
 import '../models/pair_score.dart';
+import '../models/user_profile.dart';
 import 'api_key_service.dart';
 import 'gemini_service.dart';
 import 'pair_scoring_service.dart';
@@ -59,16 +60,19 @@ class BackfillService extends ChangeNotifier {
   final ScoreRepository _scores;
   final ApiKeyService _apiKeys;
   final AppSettings _settings;
+  final UserProfile Function() _currentProfile;
 
   BackfillService({
     required PairScoringService scoring,
     required ScoreRepository scores,
     required ApiKeyService apiKeys,
     required AppSettings settings,
+    required UserProfile Function() currentProfile,
   }) : _scoring = scoring,
        _scores = scores,
        _apiKeys = apiKeys,
-       _settings = settings;
+       _settings = settings,
+       _currentProfile = currentProfile;
 
   BackfillStatus _status = BackfillStatus.idle;
   BackfillStatus get status => _status;
@@ -130,6 +134,7 @@ class BackfillService extends ChangeNotifier {
     try {
       final cached = await _scores.cachedPairKeys(
         promptVersion: GeminiService.promptVersion,
+        profileFingerprint: _currentProfile().fingerprint,
       );
       final missing =
           _usefulPairs(closet)
@@ -174,6 +179,7 @@ class BackfillService extends ChangeNotifier {
 
     final cached = await _scores.cachedPairKeys(
       promptVersion: GeminiService.promptVersion,
+      profileFingerprint: _currentProfile().fingerprint,
     );
     final queue =
         _usefulPairs(closet)

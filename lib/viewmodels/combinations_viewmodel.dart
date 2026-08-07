@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../data/score_repository.dart';
 import '../models/clothing_item.dart';
 import '../models/pair_score.dart';
+import '../models/user_profile.dart';
 import '../services/gemini_service.dart';
 import 'closet_viewmodel.dart';
 
@@ -26,12 +27,15 @@ class Combination {
 class CombinationsViewModel extends ChangeNotifier {
   final ScoreRepository _scores;
   final ClosetViewModel _closet;
+  final UserProfile Function() _currentProfile;
 
   CombinationsViewModel({
     required ScoreRepository scores,
     required ClosetViewModel closet,
+    required UserProfile Function() currentProfile,
   }) : _scores = scores,
-       _closet = closet {
+       _closet = closet,
+       _currentProfile = currentProfile {
     load();
   }
 
@@ -79,7 +83,9 @@ class CombinationsViewModel extends ChangeNotifier {
       present.add(combo.a.category);
       present.add(combo.b.category);
     }
-    return GarmentCategory.values.where(present.contains).toList(growable: false);
+    return GarmentCategory.values
+        .where(present.contains)
+        .toList(growable: false);
   }
 
   /// Mean score across everything cached, or null when empty.
@@ -104,6 +110,7 @@ class CombinationsViewModel extends ChangeNotifier {
     try {
       final rows = await _scores.allRanked(
         promptVersion: GeminiService.promptVersion,
+        profileFingerprint: _currentProfile().fingerprint,
       );
 
       // Join against the closet in memory. A pairing whose garment has been
@@ -145,6 +152,7 @@ class CombinationsViewModel extends ChangeNotifier {
     final rows = await _scores.forItem(
       itemId,
       promptVersion: GeminiService.promptVersion,
+      profileFingerprint: _currentProfile().fingerprint,
     );
 
     final out = <Combination>[];
